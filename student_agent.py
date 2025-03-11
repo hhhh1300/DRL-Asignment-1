@@ -64,8 +64,11 @@ def get_action(obs):
 
     # 3) 查表，若無 key 則隨機動作
     try:
-        q_values = Q_table[state_key]
-        action = int(np.argmax(q_values))
+        if np.random.uniform(0, 1) < 0.1:
+            action = random.choice([0, 1, 2, 3, 4, 5])
+        else:
+            q_values = Q_table[state_key]
+            action = int(np.argmax(q_values))
     except KeyError:
         action = random.choice([0, 1, 2, 3, 4, 5])
 

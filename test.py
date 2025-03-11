@@ -3,43 +3,41 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import random
-from collections import deque
 import pickle
-from collections import defaultdict
+from collections import deque
 
-# 假設您的 SimpleTaxiEnv 定義在 simple_taxi_env.py
+# 假設 SimpleTaxiEnv 定義在 simple_taxi_env.py
 from simple_custom_taxi_env import SimpleTaxiEnv
 
-# ---------------------------
-# 1. 建立 DQN 的網路結構
-# ---------------------------
+# ----------------------------
+# 1. 建立 DQN 網路結構
+# ----------------------------
 class DQN(nn.Module):
     def __init__(self, state_dim, action_dim):
         super(DQN, self).__init__()
-        # 這裡是簡單的兩層全連接 (MLP)，可自行調整層數與神經元數
         self.net = nn.Sequential(
-            nn.Linear(state_dim, 64),
+            nn.Linear(state_dim, 128),
             nn.ReLU(),
-            nn.Linear(64, 64),
+            nn.Linear(128, 128),
             nn.ReLU(),
-            nn.Linear(64, action_dim)
+            nn.Linear(128, action_dim)
         )
         
     def forward(self, x):
         return self.net(x)
 
 
-# ---------------------------
-# 2. 設定 Replay Buffer
-# ---------------------------
+# ----------------------------
+# 2. 建立 Replay Buffer
+# ----------------------------
 class ReplayBuffer:
-    def __init__(self, capacity):
+    def __init__(self, capacity=100000):
         self.buffer = deque(maxlen=capacity)
     
     def push(self, state, action, reward, next_state, done):
         self.buffer.append((state, action, reward, next_state, done))
     
-    def sample(self, batch_size):
+    def sample(self, batch_size=64):
         samples = random.sample(self.buffer, batch_size)
         states, actions, rewards, next_states, dones = zip(*samples)
         return (
@@ -54,156 +52,207 @@ class ReplayBuffer:
         return len(self.buffer)
 
 
-# ---------------------------
-# 3. 超參數設定
-# ---------------------------
-BATCH_SIZE = 64
-GAMMA = 0.99
-LR = 1e-3
-EPS_START = 1.0       # 初始 epsilon-greedy
-EPS_END = 0.01        # 最低 epsilon
-EPS_DECAY = 10000     # 多少 step 後衰減到最低
-TARGET_UPDATE_FREQ = 1000  # 每隔多少 step 更新 target network
-REPLAY_BUFFER_SIZE = 100000
-MAX_EPISODES = 500    # 可自行調整
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# ---------------------------
-# 4. 訓練函式
-# ---------------------------
-def update_passenger_in_taxi(prev_obs, current_obs, prev_passenger_in_taxi):
+# ----------------------------
+# 3. 依據前後 obs 推斷 passenger_in_taxi
+# ----------------------------
+def update_passenger_in_taxi(prev_obs, current_obs, prev_in_taxi):
     """
-    根據上一個 obs 與當前 obs，推斷是否已載客 (0 or 1)，純粹依賴 obs。
-    - prev_obs[14] / current_obs[14] => passenger_look (0 or 1)
-      代表乘客是否跟計程車在同格/相鄰
-    - 利用「計程車坐標是否變動 + passenger_look」來判斷是否成功載客。
+    只能依賴 obs 本身 (尤其 obs[14] => passenger_look),
+    以及計程車位置是否改變，來推斷是否已載客 (1) 或尚未載客 (0)。
     """
     if prev_obs is None:
-        # 第一個 step 還無法比較，預設沒載客
+        # 第一個 step 還沒有上一步的 obs
         return 0
-    
-    # passenger_look 當前
-    curr_passenger_look = current_obs[14]
-    # passenger_look 前一刻
+
     prev_passenger_look = prev_obs[14]
-    
-    # 取出計程車位置
-    taxi_row, taxi_col = current_obs[0], current_obs[1]
+    curr_passenger_look = current_obs[14]
     prev_taxi_row, prev_taxi_col = prev_obs[0], prev_obs[1]
-    
-    # 若現在 passenger_look = 0 => 代表乘客不在這 (或不相鄰)，肯定沒載客
+    curr_taxi_row, curr_taxi_col = current_obs[0], current_obs[1]
+
+    # 若現在 passenger_look=0 => 一定沒載客
     if curr_passenger_look == 0:
         return 0
-    
-    # 若現在 passenger_look = 1
-    # 如果先前就已經在載客狀態，則持續保持
-    if prev_passenger_in_taxi == 1:
+
+    # 若 passenger_look=1
+    if prev_in_taxi == 1:
+        # 先前已載客 => 維持
         return 1
-    
-    # 否則 (prev_passenger_in_taxi=0)，檢查前後 obs 是否都 passenger_look=1，
-    # 且計程車位置有改變 => 表示乘客隨車移動 => 推斷已載客
-    if prev_passenger_look == 1 and (taxi_row != prev_taxi_row or taxi_col != prev_taxi_col):
-        return 1
-    
-    # 其他情況 => 尚未載客
-    return 0
+    else:
+        # 先前尚未載客，但現在 passenger_look=1
+        # 若前後 obs 都是 passenger_look=1，且計程車座標改變 => 代表乘客「跟著」移動 => 推斷已載客
+        if prev_passenger_look == 1 and (curr_taxi_row != prev_taxi_row or curr_taxi_col != prev_taxi_col):
+            return 1
+        else:
+            return 0
 
-def make_state_key(obs, passenger_in_taxi):
-    """
-    將 obs + passenger_in_taxi 組合成適合儲存在字典中的 key。
-    注意: 這裡只示範取 obs 全部 16 維再加 1 維 passenger_in_taxi => 17 維。
-    您也可以只取部分欄位，只要「訓練」與「測試」時一致即可。
-    """
-    # 轉成 tuple
-    # obs 原本可能是 numpy array，需要轉成 tuple or list
-    obs_tuple = tuple(int(x) for x in obs)
-    # 最後加上 passenger_in_taxi
-    return obs_tuple + (passenger_in_taxi,)
 
-def train_q_table():
-    """
-    使用 Q-Learning 進行訓練，並將 Q-table 存成 q_table.pkl。
-    """
-
-    # 1) 建立環境
+# ----------------------------
+# 4. DQN 訓練函式
+# ----------------------------
+def train_dqn():
+    # === 建立環境 ===
     env_config = {
         "fuel_limit": 5000
     }
     env = SimpleTaxiEnv(**env_config)
 
-    # 2) 建立 Q-table (dict)，預設每個動作的 Q 值 = 0
-    #    也可使用 collections.defaultdict(lambda: np.zeros(6))
-    Q_table = defaultdict(lambda: np.zeros(6))
+    # === 超參數設定 ===
+    state_dim = 17  # obs (16 維) + passenger_in_taxi (1 維)
+    action_dim = 6  # 環境動作空間 (0~5)
+    max_episodes = 50000
+    max_steps_per_episode = 1000  # 給個安全上限，避免極端情況卡住
 
-    # 3) 超參數
-    num_episodes = 500            # 可自行調整
-    alpha = 0.1                   # 學習率
-    gamma = 0.99                  # 折扣因子
-    epsilon_start = 1.0
-    epsilon_end = 0.01
-    epsilon_decay_steps = 10000   # 多少 step 後衰減到最低
-    epsilon = epsilon_start
+    gamma = 0.99
+    lr = 1e-3
+    batch_size = 64
+    buffer_capacity = 100000
+    target_update_freq = 1000
+    eps_start = 1.0
+    eps_end = 0.01
+    eps_decay_steps = 2000000
 
-    # 為了 epsilon 衰減
+    # === 建立 DQN 與目標網路 ===
+    policy_net = DQN(state_dim, action_dim)
+    target_net = DQN(state_dim, action_dim)
+    target_net.load_state_dict(policy_net.state_dict())
+    target_net.eval()
+
+    optimizer = optim.AdamW(policy_net.parameters(), lr=lr)
+    replay_buffer = ReplayBuffer(capacity=buffer_capacity)
+
+    epsilon = eps_start
     total_steps = 0
 
-    for ep in range(num_episodes):
+    for ep in range(max_episodes):
         obs, _ = env.reset()
-        # 初始化 passenger_in_taxi = 0
+        # 我們需要維護上一個 obs (prev_obs) 與 passenger_in_taxi
+        prev_obs = None
         passenger_in_taxi = 0
-        previous_obs = None
-        
-        # 建立初始 state key
-        state_key = make_state_key(obs, passenger_in_taxi)
-        
+
+        # 建立初始 state
+        state = np.concatenate([obs, [passenger_in_taxi]]).astype(np.float32)
+
+        episode_reward = 0.0
         done = False
-        episode_reward = 0
+        t = 0
+        
+        for t in range(max_steps_per_episode):
+            total_steps += 1
+
+            # 1) epsilon-greedy 動作選擇
+            if random.random() < epsilon:
+                action = random.randint(0, action_dim - 1)
+            else:
+                with torch.no_grad():
+                    state_tensor = torch.FloatTensor(state).unsqueeze(0)
+                    q_values = policy_net(state_tensor)
+                    action = int(q_values.argmax(dim=1).item())
+
+            # 2) 與環境互動
+            next_obs, reward, done, _ = env.step(action)
+            if done:
+                if reward < 40:
+                    done = False
+
+            # 3) 用 prev_obs + obs => 推斷下一刻 passenger_in_taxi
+            next_passenger_in_taxi = update_passenger_in_taxi(prev_obs, obs, passenger_in_taxi)
+
+            # 建立 next_state
+            next_state = np.concatenate([next_obs, [next_passenger_in_taxi]]).astype(np.float32)
+
+            # 4) 儲存至 Replay Buffer
+            replay_buffer.push(state, action, reward, next_state, done)
+
+            # 5) 狀態往後推
+            prev_obs = obs
+            obs = next_obs
+            passenger_in_taxi = next_passenger_in_taxi
+            state = next_state
+            episode_reward += reward
+
+            # 6) 取樣小批量做 DQN 更新
+            if len(replay_buffer) >= batch_size:
+                batch_states, batch_actions, batch_rewards, batch_next_states, batch_dones = replay_buffer.sample(batch_size)
+
+                batch_states_tensor = torch.FloatTensor(batch_states)
+                batch_actions_tensor = torch.LongTensor(batch_actions).unsqueeze(1)
+                batch_rewards_tensor = torch.FloatTensor(batch_rewards)
+                batch_next_states_tensor = torch.FloatTensor(batch_next_states)
+                batch_dones_tensor = torch.FloatTensor(batch_dones)
+
+                # 計算 Q(s,a)
+                q_values = policy_net(batch_states_tensor)  # (B, action_dim)
+                current_q = q_values.gather(1, batch_actions_tensor).squeeze(1)
+
+                # 計算 target Q(s',a')
+                with torch.no_grad():
+                    next_q_values = target_net(batch_next_states_tensor)
+                    max_next_q = next_q_values.max(dim=1)[0]
+                    target_q = batch_rewards_tensor + (1 - batch_dones_tensor) * gamma * max_next_q
+
+                loss = nn.MSELoss()(current_q, target_q)
+
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+                # 定期同步 target_net
+                if total_steps % target_update_freq == 0:
+                    target_net.load_state_dict(policy_net.state_dict())
+
+            # 7) epsilon 衰減
+            if epsilon > eps_end:
+                epsilon -= (eps_start - eps_end) / eps_decay_steps
+                epsilon = max(epsilon, eps_end)
+
+            if done:
+                break
+
+        print(f"Episode {ep+1}/{max_episodes}, Steps: {t+1}, Reward: {episode_reward:.2f}, Epsilon: {epsilon:.3f}")
+        with open("trained_dqn_taxi.pkl", "wb") as f:
+            pickle.dump(policy_net.state_dict(), f)
+
+    # ---------------------------
+    # 6. 簡單測試
+    # ---------------------------
+    test_episodes = 5
+    print("=== Start Testing ===")
+    for i in range(test_episodes):
+        obs, _ = env.reset()
+        prev_obs = None
+        passenger_in_taxi = 0
+        state = np.concatenate([obs, [passenger_in_taxi]]).astype(np.float32)
+
+        done = False
+        total_r = 0.0
         steps_in_episode = 0
 
         while not done:
             steps_in_episode += 1
-            total_steps += 1
 
-            # Epsilon-greedy 選動作
-            if random.random() < epsilon:
-                action = random.randint(0, 5)
-            else:
-                q_values = Q_table[state_key]
-                action = int(np.argmax(q_values))
+            # 利用 policy_net 做動作選擇 (greedy)
+            state_tensor = torch.FloatTensor(state).unsqueeze(0)
+            with torch.no_grad():
+                q_values = policy_net(state_tensor)
+                action = int(q_values.argmax(dim=1).item())
 
-            # 與環境互動
             next_obs, reward, done, _ = env.step(action)
 
-            # 依照 obs 變化來推斷下一個 passenger_in_taxi
-            next_passenger_in_taxi = update_passenger_in_taxi(previous_obs, obs, passenger_in_taxi)
+            # 更新 passenger_in_taxi
+            next_passenger_in_taxi = update_passenger_in_taxi(prev_obs, obs, passenger_in_taxi)
+            next_state = np.concatenate([next_obs, [next_passenger_in_taxi]]).astype(np.float32)
 
-            # 組合出 next state key
-            next_state_key = make_state_key(next_obs, next_passenger_in_taxi)
-
-            # Q-Learning 更新
-            best_next_q = np.max(Q_table[next_state_key])  # 下個狀態最好的 Q
-            Q_table[state_key][action] += alpha * (reward + gamma * best_next_q - Q_table[state_key][action])
-
-            # 狀態推進
-            passenger_in_taxi = next_passenger_in_taxi
-            previous_obs = obs
+            prev_obs = obs
             obs = next_obs
-            state_key = next_state_key
-            episode_reward += reward
+            passenger_in_taxi = next_passenger_in_taxi
+            state = next_state
+            total_r += reward
 
-            # Epsilon 衰減 (線性)
-            if epsilon > epsilon_end:
-                epsilon -= (epsilon_start - epsilon_end) / epsilon_decay_steps
-                epsilon = max(epsilon, epsilon_end)
-        
-        print(f"Episode {ep+1}/{num_episodes}, Steps: {steps_in_episode}, Reward: {episode_reward:.2f}, Epsilon: {epsilon:.3f}")
+            if steps_in_episode > 5000:  # 給個安全上限，避免意外卡住
+                break
 
-    # 訓練結束後，將 Q_table 存成 pkl 檔 (dict 格式)
-    Q_table = dict(Q_table)  # defaultdict 無法直接 dump，先轉成普通 dict
-    with open("q_table.pkl", "wb") as f:
-        pickle.dump(Q_table, f)
-    print("Training finished, Q-table saved to q_table.pkl!")
+        print(f"[Test Episode {i+1}] Steps: {steps_in_episode}, TotalReward: {total_r:.2f}")
 
 
 if __name__ == "__main__":
-    train_q_table()
+    train_dqn()
