@@ -2,77 +2,105 @@
 import numpy as np
 import pickle
 import random
+import gym
 
-# 全域變數：只在首次呼叫 get_action(obs) 時初始化
-Q_table = None           
-previous_obs = None      # 上一次的 obs
-passenger_in_taxi = 0    # 上一次推斷的「是否已載客」，0 or 1
+q_table = None
+with open("q_table.pkl", "rb") as f:
+    q_table = pickle.load(f)
+visited = []
+has_picked_up = False
+target_loc = None
+destination = None
 
-def update_passenger_in_taxi(prev_obs, current_obs, prev_in_taxi):
-    """
-    依賴連續兩個 obs，推斷是否已載客。
-    - obs[14] => passenger_look (0: 乘客不在同格/相鄰, 1: 在同格或相鄰)
-    - 若 passenger_look=1 且計程車位置改變 => 可能是已經載起乘客。
-    - 若 passenger_look=0 => 表示乘客不在這 => 必定沒載客。
-    """
-    if prev_obs is None:
-        # 第一次呼叫，還沒上一個 obs，可以視為沒載客
-        return 0
+def get_state(obs, target_loc=None):
+	stations = [[0, 0], [0, 4], [4, 0], [4,4]]
+	taxi_row, taxi_col, stations[0][0],stations[0][1] ,stations[1][0],stations[1][1],stations[2][0],stations[2][1],stations[3][0],stations[3][1],obstacle_north, obstacle_south, obstacle_east, obstacle_west, passenger_look, destination_look = obs
+	stations = [tuple(i) for i in stations]	
 
-    prev_passenger_look = prev_obs[14]
-    curr_passenger_look = current_obs[14]
-    prev_taxi_row, prev_taxi_col = prev_obs[0], prev_obs[1]
-    curr_taxi_row, curr_taxi_col = current_obs[0], current_obs[1]
-
-    # case 1: 如果現在 passenger_look=0，表示乘客不在此 => 一定沒載客
-    if curr_passenger_look == 0:
-        return 0
-
-    # case 2: passenger_look=1
-    if prev_in_taxi == 1:
-        # 已經在載客狀態，就維持
-        return 1
-    else:
-        # 先前還沒載客，但現在 passenger_look=1
-        # 如果上一個 obs 也 passenger_look=1，且計程車位置改變 => 代表乘客「跟著」動 => 推斷已載客
-        if prev_passenger_look == 1 and (curr_taxi_row != prev_taxi_row or curr_taxi_col != prev_taxi_col):
-            return 1
-        else:
-            return 0
-
+	assert target_loc is not None
+	x_dir = target_loc[0] - taxi_row
+	y_dir = target_loc[1] - taxi_col
+	x_dir = 0 if x_dir == 0 else x_dir // abs(x_dir)
+	y_dir = 0 if y_dir == 0 else y_dir // abs(y_dir)
+	return (x_dir, y_dir, obstacle_north, obstacle_south, obstacle_east, obstacle_west, passenger_look, destination_look, has_picked_up)
+  
 def get_action(obs):
-    """
-    從 obs (shape=16) + 全域記憶 (previous_obs, passenger_in_taxi)
-    來推斷當前是否已載客。再用 (obs, passenger_in_taxi) 查 Q-table 得到動作。
-    如果沒對應 key，就隨機動作 fallback。
-    """
-    global Q_table
-    global previous_obs
-    global passenger_in_taxi
+	"""
+	# Selects the best action using the trained Q-table.
+	"""
+	global q_table
+	global visited
+	global has_picked_up
+	global target_loc
+	global destination
+ 
+	stations = [[obs[2], obs[3]], [obs[4], obs[5],], [obs[6], obs[7]], [obs[8], obs[9]]]
+	if target_loc is None:
+		target_loc = stations[0]
+		print (target_loc)
+	taxi_row, taxi_col, stations[0][0],stations[0][1] ,stations[1][0],stations[1][1],stations[2][0],stations[2][1],stations[3][0],stations[3][1],obstacle_north, obstacle_south, obstacle_east, obstacle_west, passenger_look, destination_look = obs
+ 
+   
+	if is_in_station(obs) and (taxi_row, taxi_col) not in visited:
+			visited.append((taxi_row, taxi_col))
+			if destination_look:
+				destination = (taxi_row, taxi_col)
+			if has_picked_up and destination is not None:
+				target_loc = destination
+			else:
+				# choose a station that has not been visited yet
+				for station in stations:
+					if station not in visited:
+						target_loc = station
+						break	
+				# print (visited, (taxi_row, taxi_col), target_loc)
+  
+	if get_state(obs, target_loc) not in q_table or np.random.uniform(0, 1) < 0.99:
+			action_probs = np.ones(6) / 6
+			if obstacle_south:
+				action_probs[0] = 0
+			if obstacle_north:
+				action_probs[1] = 0
+			if obstacle_east:
+				action_probs[2] = 0
+			if obstacle_west:
+				action_probs[3] = 0	
+			if not passenger_look or has_picked_up or not is_in_station(obs):
+				action_probs[4] = 0
+			if not destination_look or not has_picked_up or not is_in_station(obs):
+				action_probs[5] = 0
+			action_probs = action_probs / np.sum(action_probs)
+			action = np.random.choice(6, p=action_probs)  # Random action
+	else:
+		action = np.argmax(q_table[get_state(obs, target_loc)])  # Greedy action
+	
+	if not has_picked_up and passenger_look and is_in_station(obs) and action == 4:
+			has_picked_up = True
+	if has_picked_up and destination_look and is_in_station(obs) and action == 5:
+			done = True
+	
+	# action_probs = np.ones(6) / 6
+	# if obstacle_south:
+	# 	action_probs[0] = 0
+	# if obstacle_north:
+	# 	action_probs[1] = 0
+	# if obstacle_east:
+	# 	action_probs[2] = 0
+	# if obstacle_west:
+	# 	action_probs[3] = 0	
+	# if not passenger_look or has_picked_up or not is_in_station(obs):
+	# 	action_probs[4] = 0
+	# if not destination_look or not has_picked_up or not is_in_station(obs):
+	# 	action_probs[5] = 0
+	# action_probs = action_probs / np.sum(action_probs)
+	# action = np.random.choice(6, p=action_probs)  # Random action
+	return action
 
-    # 第一次呼叫時，載入訓練好的 Q_table
-    if Q_table is None:
-        with open("q_table.pkl", "rb") as f:
-            Q_table = pickle.load(f)
-
-    # 1) 根據前後 obs，更新 passenger_in_taxi
-    passenger_in_taxi = update_passenger_in_taxi(previous_obs, obs, passenger_in_taxi)
-
-    # 2) 將 obs (array) 轉成 tuple，並加上 passenger_in_taxi，形成 state_key
-    obs_key = tuple(map(int, obs))  # obs 16 維整數化
-    state_key = obs_key + (passenger_in_taxi,)
-
-    # 3) 查表，若無 key 則隨機動作
-    try:
-        if np.random.uniform(0, 1) < 0.1:
-            action = random.choice([0, 1, 2, 3, 4, 5])
-        else:
-            q_values = Q_table[state_key]
-            action = int(np.argmax(q_values))
-    except KeyError:
-        action = random.choice([0, 1, 2, 3, 4, 5])
-
-    # 4) 更新 previous_obs
-    previous_obs = obs
-
-    return action
+def is_in_station(obs):
+	"""
+	# Checks if the taxi is in a station.
+	"""
+	stations = [[0, 0], [0, 4], [4, 0], [4,4]]
+	taxi_row, taxi_col,stations[0][0],stations[0][1] ,stations[1][0],stations[1][1],stations[2][0],stations[2][1],stations[3][0],stations[3][1],obstacle_north, obstacle_south, obstacle_east, obstacle_west, passenger_look, destination_look = obs
+	stations = [tuple(i) for i in stations]
+	return (taxi_row, taxi_col) in stations
