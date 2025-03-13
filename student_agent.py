@@ -5,7 +5,7 @@ import random
 import gym
 
 q_table = None
-with open("q_table_1500.pkl", "rb") as f:
+with open("q_table.pkl", "rb") as f:
     q_table = pickle.load(f)
 visited = []
 has_picked_up = False
