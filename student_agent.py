@@ -55,7 +55,7 @@ def get_action(obs):
 						break	
 				# print (visited, (taxi_row, taxi_col), target_loc)
   
-	if get_state(obs, target_loc) not in q_table or np.random.uniform(0, 1) < 0.99:
+	if get_state(obs, target_loc) not in q_table:
 			action_probs = np.ones(6) / 6
 			if obstacle_south:
 				action_probs[0] = 0
