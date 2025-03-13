@@ -55,24 +55,24 @@ def get_action(obs):
 						break	
 				# print (visited, (taxi_row, taxi_col), target_loc)
   
-	# if get_state(obs, target_loc) not in q_table:
-	# 		action_probs = np.ones(6) / 6
-	# 		if obstacle_south:
-	# 			action_probs[0] = 0
-	# 		if obstacle_north:
-	# 			action_probs[1] = 0
-	# 		if obstacle_east:
-	# 			action_probs[2] = 0
-	# 		if obstacle_west:
-	# 			action_probs[3] = 0	
-	# 		if not passenger_look or has_picked_up or not is_in_station(obs):
-	# 			action_probs[4] = 0
-	# 		if not destination_look or not has_picked_up or not is_in_station(obs):
-	# 			action_probs[5] = 0
-	# 		action_probs = action_probs / np.sum(action_probs)
-	# 		action = np.random.choice(6, p=action_probs)  # Random action
-	# else:
-	action = np.argmax(q_table[get_state(obs, target_loc)])  # Greedy action
+	if get_state(obs, target_loc) not in q_table:
+			action_probs = np.ones(6) / 6
+			# if obstacle_south:
+			# 	action_probs[0] = 0
+			# if obstacle_north:
+			# 	action_probs[1] = 0
+			# if obstacle_east:
+			# 	action_probs[2] = 0
+			# if obstacle_west:
+			# 	action_probs[3] = 0	
+			# if not passenger_look or has_picked_up or not is_in_station(obs):
+			# 	action_probs[4] = 0
+			# if not destination_look or not has_picked_up or not is_in_station(obs):
+			# 	action_probs[5] = 0
+			# action_probs = action_probs / np.sum(action_probs)
+			action = np.random.choice(6, p=action_probs)  # Random action
+	else:
+			action = np.argmax(q_table[get_state(obs, target_loc)])  # Greedy action
 	
 	if not has_picked_up and passenger_look and is_in_station(obs) and action == 4:
 			has_picked_up = True
