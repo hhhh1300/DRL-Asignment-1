@@ -94,6 +94,7 @@ def get_action(obs):
 	# 	action_probs[5] = 0
 	# action_probs = action_probs / np.sum(action_probs)
 	# action = np.random.choice(6, p=action_probs)  # Random action
+	# print(get_state(obs, target_loc), q_table[get_state(obs, target_loc)])
 	return action
 
 def is_in_station(obs):
