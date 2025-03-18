@@ -22,7 +22,8 @@ def get_state(obs, target_loc=None):
 	y_dir = target_loc[1] - taxi_col
 	x_dir = 0 if x_dir == 0 else x_dir // abs(x_dir)
 	y_dir = 0 if y_dir == 0 else y_dir // abs(y_dir)
-	return (x_dir, y_dir, obstacle_north, obstacle_south, obstacle_east, obstacle_west, has_picked_up)
+	# return (x_dir, y_dir, obstacle_north, obstacle_south, obstacle_east, obstacle_west, has_picked_up)
+	return (obstacle_north, obstacle_south, obstacle_east, obstacle_west)
   
 def get_action(obs):
 	"""
