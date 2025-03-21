@@ -12,6 +12,7 @@ import random
 # You are free to modify this file to better match the real environment and train your own agent. 
 # Good luck!
 
+num_obstacles = [0, 0, 0, 0, 0, 5, 8, 12, 15, 15]
 
 class SimpleTaxiEnv():
     def __init__(self, grid_size=5, fuel_limit=50):
@@ -27,9 +28,14 @@ class SimpleTaxiEnv():
         self.passenger_loc = None
        
         self.obstacles = set()
-        # random generate some obstacles
-        for _ in range(self.grid_size):
-            self.obstacles.add((random.randint(0, self.grid_size - 1), random.randint(0, self.grid_size - 1)))
+        # random generate some obstacles; ensure they are not overlapping with stations
+        for _ in range(num_obstacles[self.grid_size]):
+            self.obstacles.add((np.random.randint(0, self.grid_size), np.random.randint(0, self.grid_size)))
+        for i in range(4):
+            if self.stations[i] in self.obstacles:
+                self.obstacles.remove(self.stations[i])
+        # ensure all positions can be arrived without passing any obstacles
+        
 
         self.destination = None
 
