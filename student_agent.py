@@ -41,7 +41,7 @@ def get_action(obs):
 		target_loc = stations[0]
 		print (target_loc)
 	taxi_row, taxi_col, stations[0][0],stations[0][1] ,stations[1][0],stations[1][1],stations[2][0],stations[2][1],stations[3][0],stations[3][1],obstacle_north, obstacle_south, obstacle_east, obstacle_west, passenger_look, destination_look = obs
- 
+	stations = [tuple(i) for i in stations]
    
 	if is_in_station(obs):
 			visited.append((taxi_row, taxi_col))
@@ -65,7 +65,7 @@ def get_action(obs):
 	else:
 			action = np.argmax(q_table[get_state(obs, target_loc, has_picked_up)])  # Greedy action
 	
-	# print (action, q_table[get_state(obs, target_loc, has_picked_up)])
+	# print (action, q_table[get_state(obs, target_loc, has_picked_up)], target_loc, destination)
  
 	if not has_picked_up and passenger_look and is_in_station(obs) and action == 4:
 			has_picked_up = True
