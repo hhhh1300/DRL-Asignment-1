@@ -26,7 +26,11 @@ class SimpleTaxiEnv():
         self.stations = [(0, 0), (0, self.grid_size - 1), (self.grid_size - 1, 0), (self.grid_size - 1, self.grid_size - 1)]
         self.passenger_loc = None
        
-        self.obstacles = set()  # No obstacles in simple version
+        self.obstacles = set()
+        # random generate some obstacles
+        for _ in range(self.grid_size):
+            self.obstacles.add((random.randint(0, self.grid_size - 1), random.randint(0, self.grid_size - 1)))
+
         self.destination = None
 
     def reset(self):
@@ -142,10 +146,16 @@ class SimpleTaxiEnv():
         '''
         
         
-        grid[0][0]='R'
-        grid[0][4]='G'
-        grid[4][0]='Y'
-        grid[4][4]='B'
+        # grid[0][0]='R'
+        # grid[0][4]='G'
+        # grid[4][0]='Y'
+        # grid[4][4]='B'
+        grid[self.stations[0][0]][self.stations[0][1]] = 'R'
+        grid[self.stations[1][0]][self.stations[1][1]] = 'G'
+        grid[self.stations[2][0]][self.stations[2][1]] = 'Y'
+        grid[self.stations[3][0]][self.stations[3][1]] = 'B'
+        for x, y in self.obstacles:
+            grid[x][y] = 'X'
         '''
         # Place destination
         dy, dx = destination_pos
@@ -215,6 +225,7 @@ def run_agent(agent_file, env_config, render=False):
 
 if __name__ == "__main__":
     env_config = {
+        "grid_size": np.random.randint(5, 10),
         "fuel_limit": 5000
     }
     

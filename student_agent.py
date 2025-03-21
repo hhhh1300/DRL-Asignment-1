@@ -58,13 +58,13 @@ def get_action(obs):
 				# print (visited, (taxi_row, taxi_col), target_loc)
   
 	if get_state(obs, target_loc, has_picked_up) not in q_table:
-			# print(get_state(obs, target_loc, has_picked_up), destination)
+			print(get_state(obs, target_loc, has_picked_up), destination)
 			action_probs = np.ones(6) / 6
 			action = np.random.choice(6, p=action_probs)  # Random action
 			q_table[get_state(obs, target_loc, has_picked_up)] = action_probs
 	else:
 			action = np.argmax(q_table[get_state(obs, target_loc, has_picked_up)])  # Greedy action
-	
+	print (get_state(obs, target_loc, has_picked_up), action)
 	# print (action, q_table[get_state(obs, target_loc, has_picked_up)], target_loc, destination)
  
 	if not has_picked_up and passenger_look and is_in_station(obs) and action == 4:
