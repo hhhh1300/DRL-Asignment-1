@@ -65,7 +65,7 @@ def get_action(obs):
 	else:
 			action = np.argmax(q_table[get_state(obs, target_loc, has_picked_up)])  # Greedy action
 	
-	print (action, q_table[get_state(obs, target_loc, has_picked_up)], target_loc, destination)
+	# print (action, q_table[get_state(obs, target_loc, has_picked_up)], target_loc, destination)
  
 	if not has_picked_up and passenger_look and is_in_station(obs) and action == 4:
 			has_picked_up = True
