@@ -14,6 +14,9 @@ import random
 import sys
 import importlib
 
+import ctypes
+lib = ctypes.CDLL("/Users/yangchung/Library/CloudStorage/OneDrive-個人/college/113-2/DRL/DRL-Asignment-1/env.cpython-38-x86_64-linux-gnu.so")
+print(lib)
 
 import env
 
