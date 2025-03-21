@@ -28,8 +28,8 @@ class SimpleTaxiEnv():
        
         self.obstacles = set()
         # random generate some obstacles
-        # for _ in range(self.grid_size):
-        #     self.obstacles.add((random.randint(0, self.grid_size - 1), random.randint(0, self.grid_size - 1)))
+        for _ in range(self.grid_size):
+            self.obstacles.add((random.randint(0, self.grid_size - 1), random.randint(0, self.grid_size - 1)))
 
         self.destination = None
 
@@ -225,7 +225,7 @@ def run_agent(agent_file, env_config, render=False):
 
 if __name__ == "__main__":
     env_config = {
-        # "grid_size": np.random.randint(5, 10),
+        "grid_size": np.random.randint(5, 10),
         "fuel_limit": 5000
     }
     
