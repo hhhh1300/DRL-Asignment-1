@@ -4,6 +4,7 @@ import importlib.util
 import time
 from IPython.display import clear_output
 import random
+from collections import deque
 # This environment allows you to verify whether your program runs correctly during testing, 
 # as it follows the same observation format from `env.reset()` and `env.step()`. 
 # However, keep in mind that this is just a simplified environment. 
@@ -12,7 +13,37 @@ import random
 # You are free to modify this file to better match the real environment and train your own agent. 
 # Good luck!
 
-num_obstacles = [0, 0, 0, 0, 0, 5, 8, 12, 15, 15]
+NUM_OBSTACLES = [0, 0, 0, 0, 0, 5, 8, 12, 15, 15]
+
+def check_full_connectivity(grid_size, obstacles):
+    """
+    Returns True if *all non-obstacle* cells are reachable
+    from the top-left corner (0,0).
+    """
+    start = (0, 0)
+    if start in obstacles:
+        return False
+    
+    directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+    visited = set([start])
+    queue = deque([start])
+    
+    while queue:
+        r, c = queue.popleft()
+        for dr, dc in directions:
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < grid_size and 0 <= nc < grid_size:
+                if (nr, nc) not in obstacles and (nr, nc) not in visited:
+                    visited.add((nr, nc))
+                    queue.append((nr, nc))
+    
+    # Verify every cell that's not an obstacle is visited
+    for row in range(grid_size):
+        for col in range(grid_size):
+            if (row, col) not in obstacles:
+                if (row, col) not in visited:
+                    return False
+    return True
 
 class SimpleTaxiEnv():
     def __init__(self, grid_size=5, fuel_limit=50):
@@ -27,17 +58,33 @@ class SimpleTaxiEnv():
         self.stations = [(0, 0), (0, self.grid_size - 1), (self.grid_size - 1, 0), (self.grid_size - 1, self.grid_size - 1)]
         self.passenger_loc = None
        
-        self.obstacles = set()
-        # random generate some obstacles; ensure they are not overlapping with stations
-        for _ in range(num_obstacles[self.grid_size]):
-            self.obstacles.add((np.random.randint(0, self.grid_size), np.random.randint(0, self.grid_size)))
-        for i in range(4):
-            if self.stations[i] in self.obstacles:
-                self.obstacles.remove(self.stations[i])
-        # ensure all positions can be arrived without passing any obstacles
-        
-
         self.destination = None
+        self.obstacles = self.place_obstacles()
+
+    def place_obstacles(self):
+        """Places obstacles randomly using NUM_OBSTACLES, ensuring connectivity."""
+        # Safety check if grid_size is within the array bounds
+        if self.grid_size < len(NUM_OBSTACLES):
+            n_obs = NUM_OBSTACLES[self.grid_size]
+        else:
+            # If grid_size is bigger than our array, handle gracefully
+            n_obs = 0
+
+        while True:
+            obstacles = set()
+            # Randomly place n_obs obstacles
+            while len(obstacles) < n_obs:
+                r = np.random.randint(0, self.grid_size)
+                c = np.random.randint(0, self.grid_size)
+                obstacles.add((r, c))
+            
+            # Make sure no station is blocked
+            obstacles = obstacles - set(self.stations)
+            
+            # Check full connectivity
+            if check_full_connectivity(self.grid_size, obstacles):
+                return obstacles
+            # Otherwise, loop again
 
     def reset(self):
         """Reset the environment, ensuring Taxi, passenger, and destination are not overlapping obstacles"""
